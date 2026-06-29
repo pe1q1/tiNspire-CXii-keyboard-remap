@@ -74,15 +74,38 @@ V W X Y Z           ->      N M P O I
 - The install path checks the OS ID, OS signature, and function fingerprint for
   the CX II CAS OS `6.2.0.333` target before installing.
 
+## Install On Calculator
+
+For normal use, the calculator only needs to be jailbroken with Ndless.
+
+1. Copy `qwerty_keymap.tns` onto the calculator.
+2. Open and run `qwerty_keymap.tns`.
+3. Choose `1` to probe the key mapping or `2` to install the QWERTY remap.
+
+If you already have the `.tns` file, there is no extra setup step on the
+calculator side.
+
 ## Build
 
-Install the Ndless SDK and make sure these tools are on `PATH`:
+Target calculator:
+
+- TI-Nspire CX II CAS
+- OS `6.2.0.333`
+- Ndless installed
+
+Build host:
+
+- Linux, macOS, or Windows through WSL/MSYS2/Git Bash
+- a shell that can run `make` and the Ndless command-line tools
+
+Install the Ndless SDK and make sure these commands are on `PATH`:
 
 ```text
 nspire-gcc
 nspire-ld
 genzehn
 make-prg
+make
 ```
 
 Then build:
@@ -97,6 +120,8 @@ The output is created at:
 ```text
 src/build/qwerty_keymap.tns
 ```
+
+That `.tns` file is the file to copy onto the calculator and run.
 
 ## Files
 
