@@ -1,4 +1,4 @@
-# TI-Nspire CX II Custom Keyboard Remap
+# TI-Nspire CX II Keyboard Remap
 
 <p align="center">
   <img alt="Device: TI-Nspire CX II CAS" src="https://img.shields.io/badge/device-TI--Nspire%20CX%20II%20CAS-2f6f9f">
