@@ -1,0 +1,6 @@
+*.o
+*.elf
+*.zehn
+build/
+Thumbs.db
+.DS_Store
