@@ -1,14 +1,6 @@
 # TI-Nspire CX II Custom Keyboard Remap
 
 <p align="center">
-  <img src="assets/fast-calculator.gif" width="900" alt="Fast calculator demo">
-</p>
-
-<p align="center">
-  <img src="assets/terminal-calc.png" width="700" alt="Terminal calculator output">
-</p>
-
-<p align="center">
   <img alt="Device: TI-Nspire CX II CAS" src="https://img.shields.io/badge/device-TI--Nspire%20CX%20II%20CAS-2f6f9f">
   <img alt="OS: 6.2.0.333" src="https://img.shields.io/badge/OS-6.2.0.333-3b7f3b">
   <img alt="Runtime: Ndless" src="https://img.shields.io/badge/runtime-Ndless-c46d1f">
@@ -18,6 +10,10 @@
 This project adds a QWERTY-style alphabet remap for the TI-Nspire CX II CAS.
 It is built as a small Ndless app that rewrites alphabetic key events before
 the OS delivers them to the active input field.
+
+<p align="center">
+  <img src="assets/fast-calculator.gif" width="900" alt="Fast calculator demo">
+</p>
 
 ## The Problem
 
@@ -29,12 +25,36 @@ the output feel closer to QWERTY.
 ## The Fix
 
 The app installs a resident hook on the OS event queue for TI-Nspire CX II CAS
-OS `6.2.0.333`. When an A-Z key event comes through, the hook swaps the ASCII
-letter to the QWERTY-style output letter and leaves non-letter keys alone.
+OS `6.2.0.333`. The hook is loaded into RAM by Ndless and attached to the
+`send_to_event_queue` function, which is the low-level path the OS uses before
+key events reach the active text field, console, or document input.
+
+At that level, each key press is passed as an `s_ns_event` structure. The hook
+reads the event pointer from the saved CPU register state, checks that the
+event is an alphabetic key event, then rewrites the ASCII byte in the event
+structure before control returns to the OS. The physical key code still comes
+from the calculator keyboard, but the character delivered upward is changed to
+the QWERTY-style output letter.
+
+The remap keeps the edit small and predictable:
+
+- only A-Z/a-z ASCII events are rewritten
+- modifier combinations are left alone
+- non-letter keys pass through unchanged
+- the event's high ASCII bits are preserved
+- the low byte of the key field is updated when it matches the original letter
+
+The install path checks the OS ID, OS signature, and first two ARM instruction
+words at `send_to_event_queue` before installing the RAM hook, so the remap is
+attached to the expected CX II CAS `6.2.0.333` event-queue layout.
 
 The program also includes a probe mode that prints `source -> mapped` rows, so
 the mapping can be checked directly on the calculator screen before installing
 the remap.
+
+<p align="center">
+  <img src="assets/terminal-calc.png" width="700" alt="Terminal calculator output">
+</p>
 
 ## Layout
 
