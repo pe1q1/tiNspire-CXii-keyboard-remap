@@ -1,6 +1,7 @@
 #include <os.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 
 extern unsigned int nl_osid(void);
@@ -14,47 +15,75 @@ void _fini(void) {}
 #define SEND_TO_EVENT_QUEUE_WORD0_CAS_CXII_620333 0xE92D4070u
 #define SEND_TO_EVENT_QUEUE_WORD1_CAS_CXII_620333 0xE59F4058u
 
-static char qwerty_map_char(char ch) {
-    int uppercase = ch >= 'A' && ch <= 'Z';
-    char lower = uppercase ? (char)(ch - 'A' + 'a') : ch;
-    char mapped = 0;
+/* ======================================================================
+ *  EDIT HERE: the key remap table
+ * ====================================================================== */
 
-    switch (lower) {
-        case 'a': mapped = 'q'; break;
-        case 'b': mapped = 'w'; break;
-        case 'c': mapped = 'e'; break;
-        case 'd': mapped = 'r'; break;
-        case 'e': mapped = 't'; break;
-        case 'f': mapped = 'y'; break;
-        case 'g': mapped = 'u'; break;
-        case 'h': mapped = 'a'; break;
-        case 'i': mapped = 's'; break;
-        case 'j': mapped = 'd'; break;
-        case 'k': mapped = 'f'; break;
-        case 'l': mapped = 'g'; break;
-        case 'm': mapped = 'h'; break;
-        case 'n': mapped = 'j'; break;
-        case 'o': mapped = 'k'; break;
-        case 'p': mapped = 'l'; break;
-        case 'q': mapped = 'z'; break;
-        case 'r': mapped = 'x'; break;
-        case 's': mapped = 'c'; break;
-        case 't': mapped = 'v'; break;
-        case 'u': mapped = 'b'; break;
-        case 'v': mapped = 'n'; break;
-        case 'w': mapped = 'm'; break;
-        case 'x': mapped = 'p'; break;
-        case 'y': mapped = 'o'; break;
-        case 'z': mapped = 'i'; break;
-        default: return ch;
-    }
+/*
+ * A key is identified by BOTH its "key" value and its "ascii" value,
+ * because several keys share a key value (Q/U, R/V, S/W all report
+ * key 0x62/0x42/0x22) and only differ in ascii.
+ *
+ *   from_key, from_ascii : what the key reports now (viewer: key, ascii)
+ *   to_key,   to_ascii   : what it should report instead
+ *
+ * Keep the 0xFFFFFFFF line LAST: it marks the end of the table.
+ */
+struct key_remap {
+    uint32_t from_key;
+    uint32_t from_ascii;
+    uint32_t to_key;
+    uint32_t to_ascii;
+};
 
-    return uppercase ? (char)(mapped - 'a' + 'A') : mapped;
-}
+static const struct key_remap KEY_REMAP[] = {
+    /* top row: Q W E R T Y U I O */
+    { 0xA4, 0x00, 0x62, 0x71 },  /* EE   -> Q */
+    { 0x66, 0x61, 0x22, 0x77 },  /* A    -> W */
+    { 0x46, 0x62, 0x65, 0x65 },  /* B    -> E */
+    { 0x26, 0x63, 0x42, 0x72 },  /* C    -> R */
+    { 0x85, 0x64, 0x81, 0x74 },  /* D    -> T */
+    { 0x65, 0x65, 0x60, 0x79 },  /* E    -> Y */
+    { 0x45, 0x66, 0x62, 0x75 },  /* F    -> U */
+    { 0x25, 0x67, 0x64, 0x69 },  /* G    -> I */
+    { 0x79, 0x00, 0x23, 0x6F },  /* ?!>  -> O */
 
-static int is_alpha_ascii(unsigned char ch) {
-    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
-}
+    /* middle row: A S D F G H J K L */
+    { 0x72, 0x00, 0x66, 0x61 },  /* pi   -> A */
+    { 0x84, 0x68, 0x22, 0x73 },  /* H    -> S */
+    { 0x64, 0x69, 0x85, 0x64 },  /* I    -> D */
+    { 0x44, 0x6A, 0x45, 0x66 },  /* J    -> F */
+    { 0x24, 0x6B, 0x25, 0x67 },  /* K    -> G */
+    { 0x83, 0x6C, 0x84, 0x68 },  /* L    -> H */
+    { 0x63, 0x6D, 0x44, 0x6A },  /* M    -> J */
+    { 0x43, 0x6E, 0x24, 0x6B },  /* N    -> K */
+    { 0xA7, 0x00, 0x83, 0x6C },  /* flag -> L */
+
+    /* bottom row: Z X C V B N M P */
+    { 0xA0, 0x2C, 0x40, 0x7A },  /* ,    -> Z */
+    { 0x23, 0x6F, 0x80, 0x78 },  /* O    -> X */
+    { 0x82, 0x70, 0x26, 0x63 },  /* P    -> C */
+    { 0x62, 0x71, 0x42, 0x76 },  /* Q    -> V */
+    { 0x42, 0x72, 0x46, 0x62 },  /* R    -> B */
+    { 0x22, 0x73, 0x43, 0x6E },  /* S    -> N */
+    { 0x81, 0x74, 0x63, 0x6D },  /* T    -> M */
+    { 0x62, 0x75, 0x82, 0x70 },  /* U    -> P */
+
+    /* freed keys get the displaced specials */
+    { 0x42, 0x76, 0xA4, 0x00 },  /* V    -> EE */
+    { 0x22, 0x77, 0x72, 0x00 },  /* W    -> pi */
+    { 0x80, 0x78, 0xA0, 0x2C },  /* X    -> , */
+    { 0x60, 0x79, 0xA7, 0x00 },  /* Y    -> flag */
+    { 0x40, 0x7A, 0x79, 0x00 },  /* Z    -> ?!> */
+
+    { 0xFFFFFFFFu, 0, 0, 0 }
+};
+
+/* 1 = once KEY_REMAP has entries, opening the program installs the remap
+ * immediately (no menu, no confirmation). 0 = always show the menu. */
+#define AUTO_INSTALL 0
+
+/* ====================================================================== */
 
 static int pointer_is_plausible_event_buffer(const void *ptr) {
     uintptr_t addr = (uintptr_t)ptr;
@@ -63,10 +92,22 @@ static int pointer_is_plausible_event_buffer(const void *ptr) {
            (addr >= 0xA0000000u && addr < 0xB0000000u);
 }
 
+/* ---------------------------------------------------------------------
+ *  Remap hook (no global data, no big static arrays)
+ * ------------------------------------------------------------------- */
+
+static const struct key_remap *lookup_remap(uint32_t key, uint32_t ascii) {
+    const struct key_remap *r;
+
+    for (r = KEY_REMAP; r->from_key != 0xFFFFFFFFu; r++) {
+        if (r->from_key == key && r->from_ascii == ascii)
+            return r;
+    }
+    return 0;
+}
+
 static void rewrite_key_event(struct s_ns_event *event) {
-    unsigned char old_ascii;
-    unsigned char new_ascii;
-    uint16_t high_bits;
+    const struct key_remap *remap;
 
     if (!event || !pointer_is_plausible_event_buffer(event))
         return;
@@ -77,26 +118,23 @@ static void rewrite_key_event(struct s_ns_event *event) {
     if (event->modifiers & 0x4)
         return;
 
-    old_ascii = (unsigned char)(event->ascii & 0xFFu);
-    if (!is_alpha_ascii(old_ascii))
-        return;
-
-    new_ascii = (unsigned char)qwerty_map_char((char)old_ascii);
-    high_bits = (uint16_t)(event->ascii & 0xFF00u);
-    event->ascii = (uint16_t)(high_bits | new_ascii);
-
-    if ((event->key & 0xFFu) == old_ascii)
-        event->key = (event->key & ~0xFFu) | new_ascii;
+    remap = lookup_remap((uint32_t)event->key, (uint32_t)event->ascii);
+    if (remap) {
+        event->key = remap->to_key;
+        event->ascii = (uint16_t)remap->to_ascii;
+    }
 }
 
-HOOK_DEFINE(qwerty_event_queue_hook) {
-    struct s_ns_event *event = (struct s_ns_event *)HOOK_SAVED_REGS(qwerty_event_queue_hook)[0];
+HOOK_DEFINE(remap_event_queue_hook) {
+    struct s_ns_event *event = (struct s_ns_event *)HOOK_SAVED_REGS(remap_event_queue_hook)[0];
     rewrite_key_event(event);
-    HOOK_RESTORE_RETURN(qwerty_event_queue_hook);
+    HOOK_RESTORE_RETURN(remap_event_queue_hook);
 }
+
+/* ------------------------------------------------------------------- */
 
 static void print_header(void) {
-    printf("Custom QWERTY Keymap\n\n");
+    printf("Key Remap\n\n");
     printf("OSID: %u  HW subtype: %u\n", nl_osid(), nl_hwsubtype());
     printf("OS signature @10000020: %08lX\n", (unsigned long)*(volatile uint32_t *)0x10000020u);
     printf("Target: %08lX\n", (unsigned long)SEND_TO_EVENT_QUEUE_CAS_CXII_620333);
@@ -134,75 +172,22 @@ static int wait_menu_key(void) {
         wait_key_pressed();
         if (isKeyPressed(KEY_NSPIRE_1)) return 1;
         if (isKeyPressed(KEY_NSPIRE_2)) return 2;
+        if (isKeyPressed(KEY_NSPIRE_3)) return 3;
         if (isKeyPressed(KEY_NSPIRE_ESC)) return 0;
         wait_for_release();
     }
 }
 
-static char scan_alpha_key(void) {
-    if (isKeyPressed(KEY_NSPIRE_A)) return 'A';
-    if (isKeyPressed(KEY_NSPIRE_B)) return 'B';
-    if (isKeyPressed(KEY_NSPIRE_C)) return 'C';
-    if (isKeyPressed(KEY_NSPIRE_D)) return 'D';
-    if (isKeyPressed(KEY_NSPIRE_E)) return 'E';
-    if (isKeyPressed(KEY_NSPIRE_F)) return 'F';
-    if (isKeyPressed(KEY_NSPIRE_G)) return 'G';
-    if (isKeyPressed(KEY_NSPIRE_H)) return 'H';
-    if (isKeyPressed(KEY_NSPIRE_I)) return 'I';
-    if (isKeyPressed(KEY_NSPIRE_J)) return 'J';
-    if (isKeyPressed(KEY_NSPIRE_K)) return 'K';
-    if (isKeyPressed(KEY_NSPIRE_L)) return 'L';
-    if (isKeyPressed(KEY_NSPIRE_M)) return 'M';
-    if (isKeyPressed(KEY_NSPIRE_N)) return 'N';
-    if (isKeyPressed(KEY_NSPIRE_O)) return 'O';
-    if (isKeyPressed(KEY_NSPIRE_P)) return 'P';
-    if (isKeyPressed(KEY_NSPIRE_Q)) return 'Q';
-    if (isKeyPressed(KEY_NSPIRE_R)) return 'R';
-    if (isKeyPressed(KEY_NSPIRE_S)) return 'S';
-    if (isKeyPressed(KEY_NSPIRE_T)) return 'T';
-    if (isKeyPressed(KEY_NSPIRE_U)) return 'U';
-    if (isKeyPressed(KEY_NSPIRE_V)) return 'V';
-    if (isKeyPressed(KEY_NSPIRE_W)) return 'W';
-    if (isKeyPressed(KEY_NSPIRE_X)) return 'X';
-    if (isKeyPressed(KEY_NSPIRE_Y)) return 'Y';
-    if (isKeyPressed(KEY_NSPIRE_Z)) return 'Z';
-    return 0;
+static void refuse_unsupported(void) {
+    printf("Refusing: OS/model/function\n");
+    printf("fingerprint is not the verified\n");
+    printf("CX II CAS OS 6.2.0.333 target.\n");
+    printf("(If a hook is installed, use\n");
+    printf("option 3 to remove it first.)\n\n");
 }
 
-static void run_probe(void) {
-    char pressed;
-
-    printf("\nProbe mode. ESC exits.\n");
-    printf("Press alpha keys only.\n");
-    printf("source -> mapped\n");
-    wait_for_release();
-
-    while (!isKeyPressed(KEY_NSPIRE_ESC)) {
-        pressed = scan_alpha_key();
-        if (pressed) {
-            printf("%c -> %c\n", pressed, qwerty_map_char(pressed));
-            wait_for_release();
-        }
-        msleep(10);
-    }
-
-    wait_for_release();
-}
-
-static void install_hook(void) {
-    printf("\nInstall requested.\n");
-
-    if (!environment_is_supported()) {
-        printf("Refusing to install: OS/model/function\n");
-        printf("fingerprint is not the verified\n");
-        printf("CX II CAS OS 6.2.0.333 target.\n\n");
-        printf("Press any key.\n");
-        wait_key_pressed();
-        wait_for_release();
-        return;
-    }
-
-    printf("This installs the QWERTY remap hook.\n\n");
+/* Returns 1 if the user pressed Y, 0 if ESC. */
+static int confirm_install(void) {
     printf("Press Y to install, ESC to cancel.\n");
     wait_for_release();
 
@@ -210,31 +195,132 @@ static void install_hook(void) {
         wait_key_pressed();
         if (isKeyPressed(KEY_NSPIRE_ESC)) {
             wait_for_release();
-            return;
+            return 0;
         }
-        if (isKeyPressed(KEY_NSPIRE_Y)) {
-            break;
-        }
+        if (isKeyPressed(KEY_NSPIRE_Y))
+            return 1;
         wait_for_release();
     }
+}
+
+static int table_is_empty(void) {
+    return KEY_REMAP[0].from_key == 0xFFFFFFFFu;
+}
+
+static void install_hook(int ask) {
+    printf("\nInstalling key remap hook...\n\n");
+
+    if (!environment_is_supported()) {
+        refuse_unsupported();
+        return;
+    }
+
+    if (ask && !confirm_install())
+        return;
 
     nl_set_resident();
-    HOOK_INSTALL(SEND_TO_EVENT_QUEUE_CAS_CXII_620333, qwerty_event_queue_hook);
-    _exit(0);
+    HOOK_INSTALL(SEND_TO_EVENT_QUEUE_CAS_CXII_620333, remap_event_queue_hook);
+    printf("Hook installed.\n");
+}
+
+static void uninstall_hook(void) {
+    volatile uint32_t *target = (volatile uint32_t *)SEND_TO_EVENT_QUEUE_CAS_CXII_620333;
+
+    printf("\nRemoving key remap hook...\n\n");
+
+    if (nl_osid() != OSID_CAS_CXII_620333 ||
+        *(volatile uint32_t *)0x10000020u != OS_SIGNATURE_CAS_CXII_620333) {
+        printf("Wrong OS: touching nothing.\n");
+        return;
+    }
+
+    if (environment_is_supported()) {
+        printf("No hook is installed.\n");
+        return;
+    }
+
+    target[0] = SEND_TO_EVENT_QUEUE_WORD0_CAS_CXII_620333;
+    target[1] = SEND_TO_EVENT_QUEUE_WORD1_CAS_CXII_620333;
+    clear_cache();
+
+    printf("Hook removed.\n");
+}
+
+/* Live key viewer: prints each key event. ESC (ascii 27) stops it. */
+static void run_key_viewer(void) {
+    struct s_ns_event ev;
+    int done = 0;
+
+    printf("\nLive key viewer. Press keys.\n");
+    printf("ESC stops; then any key exits.\n");
+    printf("type key ascii mods\n");
+    wait_for_release();
+
+    while (!done) {
+        memset(&ev, 0, sizeof(ev));
+        get_event(&ev);
+
+        /* Skip the periodic idle event (20 12 12 0) and empty results. */
+        if (ev.type == 0x20 && ev.key == 0x12 && ev.ascii == 0x12)
+            continue;
+        if (!(ev.type || ev.key || ev.ascii))
+            continue;
+
+        printf("%lX %lX %lX %lX\n",
+               (unsigned long)ev.type,
+               (unsigned long)ev.key,
+               (unsigned long)ev.ascii,
+               (unsigned long)ev.modifiers);
+
+        if (ev.ascii == 27)
+            done = 1;
+    }
+
+    msleep(600);        /* let any pending OS repaint finish first */
+    wait_for_release();
+}
+
+static void pause_confirm(void) {
+    int pressed = 0;
+    printf("Press any key to continue.\n");
+
+    while (!pressed) {
+        for (int t = 0; t < 40; t++) {
+            if (any_key_pressed()) {
+                pressed = 1;
+                break;
+            }
+            msleep(25);
+        }
+    }
+    wait_for_release();
 }
 
 int main(void) {
+    if (AUTO_INSTALL && !table_is_empty()) {
+        install_hook(0);
+        return 0;
+    }
+
     print_header();
-    printf("1: Probe key events\n");
-    printf("2: Install QWERTY remap hook\n");
+    printf("1: Install key remap hook\n");
+    printf("2: Live key viewer\n");
+    printf("3: Uninstall key remap hook\n");
     printf("ESC: Exit\n");
 
     switch (wait_menu_key()) {
         case 1:
-            run_probe();
+            install_hook(1);
+            pause_confirm();
             break;
         case 2:
-            install_hook();
+            msleep(500);
+            run_key_viewer();
+            pause_confirm();
+            break;
+        case 3:
+            uninstall_hook();
+            pause_confirm();
             break;
         default:
             break;
